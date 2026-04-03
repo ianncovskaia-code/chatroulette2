@@ -5,85 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Чат-рулетка</title>
     <style>
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-        }
-        .container {
-            text-align: center;
-            padding: 40px;
-            width: 100%;
-            max-width: 900px;
-        }
-        h1 {
-            color: #e94560;
-            margin-bottom: 20px;
-        }
-        button {
-            padding: 15px 30px;
-            font-size: 18px;
-            background: #00d26a;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            margin: 10px;
-        }
-        button:hover {
-            background: #00b85c;
-        }
-        #videoContainer {
-            display: none;
-            margin: 20px 0;
-            gap: 10px;
-        }
-        video {
-            width: 48%;
-            border: 2px solid #e94560;
-            border-radius: 8px;
-            background: #000;
-        }
-        #chatMessages {
-            max-height: 200px;
-            overflow-y: auto;
-            background: #16213e;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
-            text-align: left;
-        }
-        .message {
-            margin: 8px 0;
-            padding: 8px 12px;
-            border-radius: 6px;
-            background: #0f3460;
-        }
-        .message.you {
-            background: #e94560;
-            margin-left: 20%;
-        }
-        .message.system {
-            background: #ffd700;
-            color: #000;
-            text-align: center;
-        }
-        #chatInput {
-            width: 70%;
-            padding: 10px;
-            font-size: 16px;
-            border: none;
-            border-radius: 6px;
-            margin-right: 10px;
-        }
-        #controls {
-            display: none;
-        }
+        body { margin: 0; font-family: sans-serif; background: #1a1a2e; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .container { text-align: center; width: 90%; max-width: 800px; }
+        h1 { color: #e94560; }
+        button { padding: 15px 30px; font-size: 18px; background: #00d26a; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 10px; }
+        #videoContainer { display: none; gap: 10px; margin: 20px 0; }
+        video { width: 48%; border: 2px solid #e94560; border-radius: 8px; background: #000; }
+        #chatMessages { max-height: 150px; overflow-y: auto; background: #16213e; padding: 10px; border-radius: 8px; margin: 10px 0; text-align: left; }
+        .msg { margin: 5px 0; padding: 5px 10px; border-radius: 5px; }
+        .msg.you { background: #e94560; margin-left: 20%; }
+        .msg.system { background: #ffd700; color: #000; text-align: center; }
+        #controls { display: none; }
+        input { padding: 10px; width: 60%; border-radius: 5px; border: none; }
     </style>
 </head>
 <body>
@@ -93,172 +26,59 @@
             <p>Нажмите кнопку, чтобы найти собеседника</p>
             <button onclick="startSearch()">🔍 Начать поиск</button>
         </div>
-        
         <div id="videoContainer">
             <video id="localVideo" autoplay muted playsinline></video>
             <video id="remoteVideo" autoplay playsinline></video>
         </div>
-        
         <div id="chatMessages"></div>
-        
         <div id="controls">
-            <input type="text" id="chatInput" placeholder="Введите сообщение..." onkeypress="if(event.key==='Enter')sendMessage()">
+            <input type="text" id="chatInput" placeholder="Сообщение..." onkeypress="if(event.key==='Enter')sendMessage()">
             <button onclick="sendMessage()">➤</button>
             <button onclick="nextPartner()">⏭ Далее</button>
-            <button onclick="stopChat()">⏹ Стоп</button>
         </div>
     </div>
-
     <script>
-        let ws, pc, localStream, isConnected = false;
-        
-        const ICE_CONFIG = {
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-        };
-
-        function connectWebSocket() {
-            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${protocol}//${location.host}`);
-            
-            ws.onopen = () => {
-                console.log('Connected');
-                ws.send(JSON.stringify({ type: 'get_online' }));
-            };
-            
-            ws.onmessage = (e) => {
-                const msg = JSON.parse(e.data);
-                handleServerMessage(msg);
-            };
-            
-            ws.onclose = () => setTimeout(connectWebSocket, 3000);
+        let ws, pc, localStream;
+        function connect() {
+            ws = new WebSocket((location.protocol==='https:'?'wss':'ws')+'://'+location.host);
+            ws.onmessage = e => handle(JSON.parse(e.data));
+            ws.onclose = () => setTimeout(connect, 3000);
         }
-
-        function handleServerMessage(msg) {
-            switch(msg.type) {
-                case 'searching':
-                    document.getElementById('startScreen').innerHTML = '<p>🔍 Ищем собеседника...</p>';
-                    break;
-                case 'found':
-                    onPartnerFound();
-                    break;
-                case 'chat':
-                    addMessage(msg.text, 'them');
-                    break;
-                case 'partner_disconnected':
-                    onPartnerDisconnected();
-                    break;
-                case 'system':
-                    addMessage(msg.text, 'system');
-                    break;
-                case 'offer':
-                    handleOffer(msg.offer);
-                    break;
-                case 'answer':
-                    handleAnswer(msg.answer);
-                    break;
-                case 'candidate':
-                    handleCandidate(msg.candidate);
-                    break;
-            }
+        function handle(m) {
+            if(m.type==='found') { document.getElementById('startScreen').style.display='none'; document.getElementById('videoContainer').style.display='flex'; document.getElementById('controls').style.display='block'; createPC(); createOffer(); }
+            if(m.type==='chat') addMsg(m.text, 'them');
+            if(m.type==='partner_disconnected') { alert('Собеседник ушёл'); location.reload(); }
+            if(m.type==='answer') pc.setRemoteDescription(new RTCSessionDescription(m.answer));
+            if(m.type==='candidate') pc.addIceCandidate(new RTCIceCandidate(m.candidate));
         }
-
         async function startSearch() {
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
                 document.getElementById('localVideo').srcObject = localStream;
-                document.getElementById('videoContainer').style.display = 'flex';
-                document.getElementById('controls').style.display = 'block';
-                document.getElementById('startScreen').style.display = 'none';
-                
-                createPeerConnection();
-                createOffer();
-                
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'search' }));
-                }
-            } catch (err) {
-                alert('Нет доступа к камере: ' + err.message);
-            }
+                ws.send(JSON.stringify({type:'search'}));
+            } catch(e) { alert('Нет камеры'); }
         }
-
-        function createPeerConnection() {
-            pc = new RTCPeerConnection(ICE_CONFIG);
-            pc.ontrack = (e) => {
-                document.getElementById('remoteVideo').srcObject = e.streams[0];
-            };
-            pc.onicecandidate = (e) => {
-                if (e.candidate && ws) {
-                    ws.send(JSON.stringify({ type: 'candidate', candidate: e.candidate }));
-                }
-            };
-            if (localStream) {
-                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-            }
+        function createPC() {
+            pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+            pc.ontrack = e => document.getElementById('remoteVideo').srcObject = e.streams[0];
+            pc.onicecandidate = e => { if(e.candidate) ws.send(JSON.stringify({type:'candidate', candidate:e.candidate})); };
+            localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
         }
-
         async function createOffer() {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
-            if (ws) ws.send(JSON.stringify({ type: 'offer', offer: pc.localDescription }));
+            ws.send(JSON.stringify({type:'offer', offer: pc.localDescription}));
         }
-
-        async function handleOffer(offer) {
-            if (!pc) createPeerConnection();
-            await pc.setRemoteDescription(new RTCSessionDescription(offer));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            if (ws) ws.send(JSON.stringify({ type: 'answer', answer: pc.localDescription }));
-        }
-
-        async function handleAnswer(answer) {
-            if (pc) await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        }
-
-        async function handleCandidate(candidate) {
-            if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        }
-
-        function onPartnerFound() {
-            isConnected = true;
-            addMessage('✅ Собеседник найден!', 'system');
-        }
-
-        function onPartnerDisconnected() {
-            isConnected = false;
-            addMessage('😔 Собеседник отключился', 'system');
-            if (pc) pc.close();
-        }
-
-        function nextPartner() {
-            if (pc) pc.close();
-            addMessage('🔄 Ищем нового...', 'system');
-            if (ws) ws.send(JSON.stringify({ type: 'next' }));
-            setTimeout(() => startSearch(), 1000);
-        }
-
-        function stopChat() {
-            location.reload();
-        }
-
+        function nextPartner() { location.reload(); }
         function sendMessage() {
-            const input = document.getElementById('chatInput');
-            const text = input.value.trim();
-            if (!text || !ws) return;
-            
-            ws.send(JSON.stringify({ type: 'chat', text: text }));
-            addMessage(text, 'you');
-            input.value = '';
+            const inp = document.getElementById('chatInput');
+            if(inp.value.trim()) { ws.send(JSON.stringify({type:'chat', text:inp.value})); addMsg(inp.value, 'you'); inp.value=''; }
         }
-
-        function addMessage(text, type) {
-            const div = document.createElement('div');
-            div.className = 'message ' + type;
-            div.textContent = text;
-            document.getElementById('chatMessages').appendChild(div);
-            document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+        function addMsg(t, type) {
+            const d = document.createElement('div'); d.className='msg '+type; d.textContent=t;
+            document.getElementById('chatMessages').appendChild(d);
         }
-
-        connectWebSocket();
+        connect();
     </script>
 </body>
 </html>
