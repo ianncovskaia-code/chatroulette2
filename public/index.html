@@ -52,13 +52,16 @@
                 document.getElementById('videoContainer').style.display='flex'; 
                 document.getElementById('controls').style.display='block'; 
                 createPC(); 
-                // ИСПРАВЛЕНИЕ: Только инициатор создает Offer
+                // Только инициатор создает Offer
                 if(m.initiator) createOffer(); 
             }
+            // Обработка входящего звонка (для второго участника)
+            if(m.type==='offer') handleOffer(m.offer);
+            
             if(m.type==='chat') addMsg(m.text, 'them');
             if(m.type==='partner_disconnected') { alert('Собеседник ушёл'); location.reload(); }
-            if(m.type==='answer') pc.setRemoteDescription(new RTCSessionDescription(m.answer));
-            if(m.type==='candidate') pc.addIceCandidate(new RTCIceCandidate(m.candidate));
+            if(m.type==='answer') handleAnswer(m.answer);
+            if(m.type==='candidate') handleCandidate(m.candidate);
         }
         
         async function startSearch() {
@@ -66,12 +69,17 @@
                 localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
                 document.getElementById('localVideo').srcObject = localStream;
                 ws.send(JSON.stringify({type:'search'}));
-            } catch(e) { alert('Нет камеры'); }
+            } catch(e) { alert('Нет доступа к камере/микрофону'); }
         }
         
         function createPC() {
             pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-            pc.ontrack = e => document.getElementById('remoteVideo').srcObject = e.streams[0];
+            // Когда приходит видео от собеседника
+            pc.ontrack = e => {
+                if(e.streams[0]) {
+                    document.getElementById('remoteVideo').srcObject = e.streams[0];
+                }
+            };
             pc.onicecandidate = e => { if(e.candidate) ws.send(JSON.stringify({type:'candidate', candidate:e.candidate})); };
             localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
         }
@@ -81,8 +89,26 @@
             await pc.setLocalDescription(offer);
             ws.send(JSON.stringify({type:'offer', offer: pc.localDescription}));
         }
+
+        async function handleOffer(offer) {
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            ws.send(JSON.stringify({type:'answer', answer: pc.localDescription}));
+        }
+
+        async function handleAnswer(answer) {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        }
+
+        async function handleCandidate(candidate) {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        }
         
-        function nextPartner() { location.reload(); }
+        function nextPartner() { 
+            ws.send(JSON.stringify({type:'next'}));
+            location.reload(); 
+        }
         
         function sendMessage() {
             const inp = document.getElementById('chatInput');
