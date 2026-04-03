@@ -39,18 +39,28 @@
     </div>
     <script>
         let ws, pc, localStream;
+        
         function connect() {
             ws = new WebSocket((location.protocol==='https:'?'wss':'ws')+'://'+location.host);
             ws.onmessage = e => handle(JSON.parse(e.data));
             ws.onclose = () => setTimeout(connect, 3000);
         }
+        
         function handle(m) {
-            if(m.type==='found') { document.getElementById('startScreen').style.display='none'; document.getElementById('videoContainer').style.display='flex'; document.getElementById('controls').style.display='block'; createPC(); createOffer(); }
+            if(m.type==='found') { 
+                document.getElementById('startScreen').style.display='none'; 
+                document.getElementById('videoContainer').style.display='flex'; 
+                document.getElementById('controls').style.display='block'; 
+                createPC(); 
+                // ИСПРАВЛЕНИЕ: Только инициатор создает Offer
+                if(m.initiator) createOffer(); 
+            }
             if(m.type==='chat') addMsg(m.text, 'them');
             if(m.type==='partner_disconnected') { alert('Собеседник ушёл'); location.reload(); }
             if(m.type==='answer') pc.setRemoteDescription(new RTCSessionDescription(m.answer));
             if(m.type==='candidate') pc.addIceCandidate(new RTCIceCandidate(m.candidate));
         }
+        
         async function startSearch() {
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
@@ -58,26 +68,32 @@
                 ws.send(JSON.stringify({type:'search'}));
             } catch(e) { alert('Нет камеры'); }
         }
+        
         function createPC() {
             pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
             pc.ontrack = e => document.getElementById('remoteVideo').srcObject = e.streams[0];
             pc.onicecandidate = e => { if(e.candidate) ws.send(JSON.stringify({type:'candidate', candidate:e.candidate})); };
             localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
         }
+        
         async function createOffer() {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             ws.send(JSON.stringify({type:'offer', offer: pc.localDescription}));
         }
+        
         function nextPartner() { location.reload(); }
+        
         function sendMessage() {
             const inp = document.getElementById('chatInput');
             if(inp.value.trim()) { ws.send(JSON.stringify({type:'chat', text:inp.value})); addMsg(inp.value, 'you'); inp.value=''; }
         }
+        
         function addMsg(t, type) {
             const d = document.createElement('div'); d.className='msg '+type; d.textContent=t;
             document.getElementById('chatMessages').appendChild(d);
         }
+        
         connect();
     </script>
 </body>
