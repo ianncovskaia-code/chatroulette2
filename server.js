@@ -10,7 +10,7 @@ const wss = new WebSocketServer({ server });
 app.use(express.static(path.join(__dirname, 'public')));
 
 const queue = [];
-const peers = {}; // ws -> partnerWs
+const peers = {}; 
 
 wss.on('connection', (ws) => {
     console.log('User connected');
@@ -40,13 +40,18 @@ wss.on('connection', (ws) => {
 function handleSearch(ws) {
     if (peers[ws]) return;
     ws.send(JSON.stringify({ type: 'searching' }));
+    
     if (queue.length > 0) {
         const partner = queue.shift();
         if (partner.readyState === 1) {
             peers[ws] = partner;
             peers[partner] = ws;
-            ws.send(JSON.stringify({ type: 'found' }));
-            partner.send(JSON.stringify({ type: 'found' }));
+            
+            // === ВОТ ЗДЕСЬ ИСПРАВЛЕНИЕ ===
+            // ws (новый человек) становится инициатором
+            ws.send(JSON.stringify({ type: 'found', initiator: true }));
+            // partner (тот кто ждал) становится принимающим
+            partner.send(JSON.stringify({ type: 'found', initiator: false }));
         } else {
             handleSearch(ws);
         }
